@@ -39,6 +39,11 @@ class App {
 
 	init() {
 
+		// check if WebGL is available
+		// if (WEBGL.isWebGLAvailable() === false) {
+		// 	document.body.appendChild(WEBGL.getWebGLErrorMessage());
+		// }
+
 		// skip if there's no THREE
 		if (!THREE) return
 
@@ -53,6 +58,7 @@ class App {
 
 		// add events
 		window.addEventListener('resize', this.resize.bind(this), false)
+		document.body.addEventListener('keydown', this.keydown.bind(this), false)
 
 		// render
 		this.render()
@@ -71,6 +77,9 @@ class App {
 		// add fog to the scene
 		this.scene.fog = new THREE.Fog(0xf7d9aa, 100, 950)
 
+		// add background color
+		this.scene.background = new THREE.Color(0x111111)
+
 		// create the camera
 		this.createCamera()
 
@@ -87,13 +96,16 @@ class App {
 		let axesHelper = new THREE.AxesHelper(5)
 		this.scene.add(axesHelper)
 
+		let stats = new Stats()
+		this.container.appendChild(stats.dom)
+
 	}
 
 	createCamera() {
 
 		// set values to init the camera
 		this.aspectRatio = this.width / this.height
-		this.fieldOfView = 60
+		this.fieldOfView = 30
 		this.nearPlane = 1
 		this.farPlane = 10000
 
@@ -116,8 +128,8 @@ class App {
 
 		// create new renderer
 		this.renderer = new THREE.WebGLRenderer({
-			alpha: true,
-			antialias: true
+			// alpha: true,
+			// antialias: true
 		})
 
 		// set the size
@@ -173,36 +185,44 @@ class App {
 
 	createObject() {
 
-		this.vShader = document.querySelector('#vertexshader').textContent,
-		this.fShader = document.querySelector('#fragmentshader').textContent
-		
-		// let uniforms = {
-		// 	amplitude: {
-		// 		type: 'f', 		// a float
-		// 		value: 0		// value "0"
-		// 	}
-		// };
+		let radius = 50, 
+			segments = 128, 
+			rings = 64
 
-		this.geometry = new THREE.SphereBufferGeometry(100,16,16)
+		let geometry = new THREE.SphereBufferGeometry(radius, segments, rings)
 
-		this.material = new THREE.ShaderMaterial({
-			// uniforms: uniforms,
-			vertexShader: this.vShader,
-		    fragmentShader: this.fShader
-		})
-
-		this.displacement = new Float32Array(this.geometry.attributes.position.count)
-		this.noise = new Float32Array(this.geometry.attributes.position.count)
-
-		for (let i = 0; i < this.displacement.length; i++) {
-			this.noise[i] = Math.random() * 5;
+		this.uniforms = {
+			amplitude: {
+				value: 1.0 
+			},
+			color: {
+				value: new THREE.Color(0x8855ff) 
+			},
+			texture: {
+				value: new THREE.TextureLoader().load("assets/textures/water.jpg")
+			}
 		}
 
-		this.geometry.addAttribute('displacement', new THREE.BufferAttribute(this.displacement, 1))
+		this.uniforms.texture.value.wrapS = this.uniforms.texture.value.wrapT = THREE.RepeatWrapping;
 
-		this.mesh = new THREE.Mesh(this.geometry, this.material)
-		
-		this.scene.add(this.mesh)
+		let material = new THREE.ShaderMaterial({
+			uniforms: this.uniforms,
+			vertexShader: document.querySelector('#vertexshader').textContent,
+			fragmentShader: document.querySelector('#fragmentshader').textContent
+		})
+
+		this.displacement = new Float32Array(geometry.attributes.position.count)
+		this.noise = new Float32Array(geometry.attributes.position.count)
+
+		for (let i = 0; i < this.displacement.length; i++) {
+			this.noise[i] = Math.random() * 5
+		}
+
+		geometry.addAttribute('displacement', new THREE.BufferAttribute(this.displacement, 1))
+
+		this.sphere = new THREE.Mesh(geometry, material)
+
+		this.scene.add(this.sphere)
 		
 
 	}
@@ -226,13 +246,48 @@ class App {
 
 	}
 
-	render() {
+	keydown(e) {
+
+		console.log('keydown: ', e)
+
+		for (let i = 0; i < this.displacement.length; i++) {
+
+			this.displacement[i] = Math.sin(0.1 * i + time)
+
+			this.noise[i] += 0.5 * (0.5 - Math.random())
+			this.noise[i] = THREE.Math.clamp(this.noise[i], -5, 5)
+
+			this.displacement[i] += this.noise[i]
+		}
+
+		this.sphere.geometry.attributes.displacement.needsUpdate = true
+
+	}
+
+	render(timestamp) {
 
 		let time = Date.now() * 0.01
-		this.mesh.rotation.y = this.mesh.rotation.z = 0.01 * time
+
+		this.sphere.rotation.y = this.sphere.rotation.z = 0.01 * time
+
+		this.uniforms.amplitude.value = 15 * Math.sin(this.sphere.rotation.y * 0.125)
+
+		this.uniforms.color.value.offsetHSL(0.0005, 0, 0)
+
+		for (let i = 0; i < this.displacement.length; i++) {
+
+			this.displacement[i] = Math.sin(0.1 * i + time)
+
+			this.noise[i] += 0.5 * (0.5 - Math.random())
+			this.noise[i] = THREE.Math.clamp(this.noise[i], -5, 5)
+
+			this.displacement[i] += this.noise[i]
+		}
+
+		this.sphere.geometry.attributes.displacement.needsUpdate = true
 
 		// render
-  		this.renderer.render(this.scene, this.camera);
+  		this.renderer.render(this.scene, this.camera)
 
 		// add self to the requestAnimationFrame
 		window.requestAnimationFrame(this.render.bind(this))
